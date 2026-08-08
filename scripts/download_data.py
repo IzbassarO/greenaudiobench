@@ -33,16 +33,26 @@ sys.path.insert(0, str(ROOT / "src"))
 from gab.datasets import SPECS, compute_stats, cross_check, dataset_root  # noqa: E402
 from gab.utils import sha256_file, utc_timestamp  # noqa: E402
 
+# ESC-50 is pinned to the exact commit we downloaded and verified on
+# 2026-08-08 (the commit sha is embedded as the zip archive comment of the
+# downloaded esc50-master.zip and matches upstream master of that date).
+ESC50_COMMIT = "33c8ce9eb2cf0b1c2f8bcf322eb349b6be34dbb6"
+
 SOURCES = {
     "esc50": {
-        "url": "https://github.com/karolpiczak/ESC-50/archive/refs/heads/master.zip",
+        "url": f"https://github.com/karolpiczak/ESC-50/archive/{ESC50_COMMIT}.zip",
         "archive": "esc50-master.zip",
         "kind": "zip",
+        # a pinned-commit archive extracts to ESC-50-<sha>/ — rename to the
+        # canonical root so datasets.py sees a stable path
+        "rename_root": (f"ESC-50-{ESC50_COMMIT}", "ESC-50-master"),
+        "src_revision": ESC50_COMMIT,
     },
     "urbansound8k": {
         "url": "https://zenodo.org/records/1203745/files/UrbanSound8K.tar.gz?download=1",
         "archive": "UrbanSound8K.tar.gz",
         "kind": "tar",
+        "src_revision": "zenodo DOI 10.5281/zenodo.1203745",
     },
 }
 
@@ -95,7 +105,8 @@ def download_with_resume(url: str, dest: Path, max_retries: int = 8) -> None:
     raise RuntimeError(f"failed to download {url} after {max_retries} attempts")
 
 
-def extract_archive(archive: Path, kind: str, target_dir: Path, marker: Path) -> None:
+def extract_archive(archive: Path, kind: str, target_dir: Path, marker: Path,
+                    spec_rename_root: tuple[str, str] | None = None) -> None:
     if marker.exists():
         log(f"already extracted, skipping: {target_dir}")
         return
@@ -119,23 +130,22 @@ def extract_archive(archive: Path, kind: str, target_dir: Path, marker: Path) ->
         archive.unlink(missing_ok=True)
         shutil.rmtree(target_dir, ignore_errors=True)
         raise
+    rename = spec_rename_root
+    if rename is not None:
+        src, dst = target_dir / rename[0], target_dir / rename[1]
+        if src.is_dir() and not dst.exists():
+            src.rename(dst)
     if not marker.exists():
         raise RuntimeError(f"extraction finished but expected path missing: {marker}")
 
 
-def update_checksums(checksums_path: Path, rel_name: str, sha: str,
-                     size: int, when: str) -> None:
-    """Rewrite the entry for rel_name, keeping all other entries (append-only set).
+class ChecksumMismatch(SystemExit):
+    pass
 
-    Format is `shasum -a 256 -c` compatible; a comment line above each entry
-    records size and download time.
-    """
-    header = (
-        "# GreenAudioBench dataset archive checksums.\n"
-        "# SHA-256 recorded from the ACTUAL downloaded files (never copied).\n"
-        "# Verify with: cd data && shasum -a 256 -c CHECKSUMS.txt\n"
-    )
-    entries: dict[str, tuple[str, str]] = {}  # rel_name -> (comment, checksum line)
+
+def _parse_checksums(checksums_path: Path) -> dict[str, tuple[str, str]]:
+    """rel_name -> (comment line, checksum line)."""
+    entries: dict[str, tuple[str, str]] = {}
     if checksums_path.exists():
         comment = ""
         for line in checksums_path.read_text().splitlines():
@@ -145,15 +155,61 @@ def update_checksums(checksums_path: Path, rel_name: str, sha: str,
                 name = line.split(maxsplit=1)[1].strip()
                 entries[name] = (comment, line)
                 comment = ""
+    return entries
+
+
+def recorded_sha(checksums_path: Path, rel_name: str) -> str | None:
+    entry = _parse_checksums(checksums_path).get(rel_name)
+    return entry[1].split()[0] if entry else None
+
+
+def update_checksums(checksums_path: Path, rel_name: str, sha: str,
+                     size: int, when: str, src_revision: str = "",
+                     force: bool = False) -> None:
+    """VERIFY against the committed record; never silently overwrite it.
+
+    - entry exists and hash matches -> keep the original line untouched
+      (including the original downloaded_utc — no churn in a committed file);
+    - entry exists and hash DIFFERS -> abort loudly (the on-disk archive does
+      not match the committed provenance record); --force accepts the new
+      value explicitly;
+    - no entry -> record it (first actual download).
+    File format stays `shasum -a 256 -c` compatible; written atomically.
+    """
+    header = (
+        "# GreenAudioBench dataset archive checksums.\n"
+        "# SHA-256 recorded from the ACTUAL downloaded files (never copied).\n"
+        "# Verify with: cd data && shasum -a 256 -c CHECKSUMS.txt\n"
+    )
+    entries = _parse_checksums(checksums_path)
+    existing = entries.get(rel_name)
+    if existing is not None:
+        old_sha = existing[1].split()[0]
+        if old_sha == sha and not force:
+            log(f"checksum VERIFIED against committed record: {rel_name}")
+            return
+        if old_sha != sha and not force:
+            raise ChecksumMismatch(
+                f"CHECKSUM MISMATCH for {rel_name}:\n"
+                f"  committed : {old_sha}\n"
+                f"  on disk   : {sha}\n"
+                "The archive does not match the committed provenance record. "
+                "Delete the archive to re-download, or re-run with --force to "
+                "accept the new hash (this rewrites committed provenance)."
+            )
+        log(f"--force: replacing recorded checksum for {rel_name}")
+    rev = f"  src_revision={src_revision}" if src_revision else ""
     entries[rel_name] = (
-        f"# file: {rel_name}  size_bytes={size}  downloaded_utc={when}",
+        f"# file: {rel_name}  size_bytes={size}  downloaded_utc={when}{rev}",
         f"{sha}  {rel_name}",
     )
     lines = [header]
     for name in sorted(entries):
         comment, checksum_line = entries[name]
         lines.append(comment + "\n" + checksum_line + "\n")
-    checksums_path.write_text("\n".join(lines))
+    tmp = checksums_path.with_suffix(".txt.tmp")
+    tmp.write_text("\n".join(lines))
+    tmp.replace(checksums_path)
 
 
 def process_dataset(key: str, data_dir: Path, force: bool) -> dict:
@@ -177,10 +233,12 @@ def process_dataset(key: str, data_dir: Path, force: bool) -> dict:
     log(f"computing SHA-256 of {archive.name} ...")
     sha = sha256_file(archive)
     update_checksums(data_dir / "CHECKSUMS.txt", f"archives/{src['archive']}",
-                     sha, archive.stat().st_size, utc_timestamp())
+                     sha, archive.stat().st_size, utc_timestamp(),
+                     src_revision=src.get("src_revision", ""), force=force)
     log(f"sha256({archive.name}) = {sha}")
 
-    extract_archive(archive, src["kind"], extract_target, marker)
+    extract_archive(archive, src["kind"], extract_target, marker,
+                    spec_rename_root=src.get("rename_root"))
 
     log("scanning clips (headers only) and cross-checking against metadata ...")
     stats = compute_stats(spec, data_dir)

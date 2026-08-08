@@ -19,7 +19,8 @@ class DatasetSpec:
     root_subdir: str         # top-level dir inside the extracted archive
     meta_relpath: str        # metadata CSV, relative to root_subdir
     filename_column: str
-    label_column: str
+    label_column: str        # human-readable class name column
+    label_id_column: str     # integer class id column (used by probes)
     expected_clips: int      # from the official dataset description
     expected_classes: int
     folds: tuple[int, ...]
@@ -32,6 +33,7 @@ ESC50 = DatasetSpec(
     meta_relpath="meta/esc50.csv",
     filename_column="filename",
     label_column="category",
+    label_id_column="target",
     expected_clips=2000,
     expected_classes=50,
     folds=ESC50_FOLDS,
@@ -44,6 +46,7 @@ US8K = DatasetSpec(
     meta_relpath="metadata/UrbanSound8K.csv",
     filename_column="slice_file_name",
     label_column="class",
+    label_id_column="classID",
     expected_clips=8732,
     expected_classes=10,
     folds=US8K_FOLDS,
