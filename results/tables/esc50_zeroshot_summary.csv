@@ -1,0 +1,5 @@
+model,template_id,prompt_template,n_folds,accuracy_mean,accuracy_std,macro_f1_mean,macro_f1_std,model_display,weak_zero_shot
+laion_clap,alternative,this is the sound of {class_name},5,0.851,0.019890324280916125,0.8311440119226281,0.021271852226796173,LAION-CLAP,True
+laion_clap,primary,a sound of {class_name},5,0.8150000000000001,0.01920286436967151,0.7935477328558385,0.020972239694348783,LAION-CLAP,True
+ms_clap,alternative,this is the sound of {class_name},5,0.9385,0.01606626901305963,0.935052321457975,0.018901085924155157,MS-CLAP,True
+ms_clap,primary,a sound of {class_name},5,0.95,0.014252192813739193,0.9478780779741338,0.016392793892129463,MS-CLAP,True

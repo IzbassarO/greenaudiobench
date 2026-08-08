@@ -1,0 +1,21 @@
+comparison,comparison_label,cost_metric,model,model_display,dtype,batch_size,accuracy_mean,cost_value,pareto_optimal
+A,"accuracy vs latency, fp32 batch 1",latency_ms_per_clip_median,ms_clap,MS-CLAP,fp32,1,0.9795,12.335851000443654,True
+A,"accuracy vs latency, fp32 batch 1",latency_ms_per_clip_median,panns_cnn14,PANNs CNN14,fp32,1,0.9225,12.665461500091624,False
+A,"accuracy vs latency, fp32 batch 1",latency_ms_per_clip_median,beats,BEATs,fp32,1,0.9615,24.04591699996672,False
+A,"accuracy vs latency, fp32 batch 1",latency_ms_per_clip_median,laion_clap,LAION-CLAP,fp32,1,0.9720000000000001,44.511531999887666,False
+A,"accuracy vs latency, fp32 batch 1",latency_ms_per_clip_median,ast,AST,fp32,1,0.9615,82.72605449974435,False
+B,"accuracy vs dynamic J/clip, fp32 batch 1",j_per_clip_dynamic,panns_cnn14,PANNs CNN14,fp32,1,0.9225,0.70609718272022,True
+B,"accuracy vs dynamic J/clip, fp32 batch 1",j_per_clip_dynamic,ms_clap,MS-CLAP,fp32,1,0.9795,0.7254711356319068,True
+B,"accuracy vs dynamic J/clip, fp32 batch 1",j_per_clip_dynamic,beats,BEATs,fp32,1,0.9615,1.3651364644192137,False
+B,"accuracy vs dynamic J/clip, fp32 batch 1",j_per_clip_dynamic,laion_clap,LAION-CLAP,fp32,1,0.9720000000000001,1.4605226545757273,False
+B,"accuracy vs dynamic J/clip, fp32 batch 1",j_per_clip_dynamic,ast,AST,fp32,1,0.9615,5.0133802288630696,False
+C,"accuracy vs latency, fp32 batch 32",latency_ms_per_clip_median,panns_cnn14,PANNs CNN14,fp32,32,0.9225,4.892931374996579,True
+C,"accuracy vs latency, fp32 batch 32",latency_ms_per_clip_median,ms_clap,MS-CLAP,fp32,32,0.9795,9.438935749997768,True
+C,"accuracy vs latency, fp32 batch 32",latency_ms_per_clip_median,beats,BEATs,fp32,32,0.9615,21.613299500018,False
+C,"accuracy vs latency, fp32 batch 32",latency_ms_per_clip_median,laion_clap,LAION-CLAP,fp32,32,0.9720000000000001,36.31083501562671,False
+C,"accuracy vs latency, fp32 batch 32",latency_ms_per_clip_median,ast,AST,fp32,32,0.9615,99.7801184062439,False
+D,"accuracy vs dynamic J/clip, fp32 batch 32",j_per_clip_dynamic,panns_cnn14,PANNs CNN14,fp32,32,0.9225,0.2798882777421863,True
+D,"accuracy vs dynamic J/clip, fp32 batch 32",j_per_clip_dynamic,ms_clap,MS-CLAP,fp32,32,0.9795,0.513154332353245,True
+D,"accuracy vs dynamic J/clip, fp32 batch 32",j_per_clip_dynamic,beats,BEATs,fp32,32,0.9615,1.1916430135597835,False
+D,"accuracy vs dynamic J/clip, fp32 batch 32",j_per_clip_dynamic,laion_clap,LAION-CLAP,fp32,32,0.9720000000000001,1.4792834945543905,False
+D,"accuracy vs dynamic J/clip, fp32 batch 32",j_per_clip_dynamic,ast,AST,fp32,32,0.9615,5.3375193909000895,False
