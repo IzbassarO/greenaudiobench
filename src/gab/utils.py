@@ -48,10 +48,18 @@ def git_commit() -> str:
         return "unknown"
 
 
+#: Experiment-owned output dirs: the pipeline's own results must not make the
+#: tree look dirty (M3 writes results/accuracy.csv -> M4/M5 must still start).
+#: ONLY these are excluded — source/config/test changes still count as dirty.
+_DIRTY_EXCLUDES = (":(exclude)results", ":(exclude)figures")
+
+
 def git_dirty() -> bool:
-    """True when the working tree differs from HEAD (untracked files count)."""
+    """True when the working tree differs from HEAD (untracked files count),
+    ignoring only the experiment-owned output directories results/ and
+    figures/."""
     try:
-        return bool(_git("status", "--porcelain"))
+        return bool(_git("status", "--porcelain", "--", ".", *_DIRTY_EXCLUDES))
     except (subprocess.CalledProcessError, FileNotFoundError):
         return True  # cannot prove the tree is clean -> treat as dirty
 

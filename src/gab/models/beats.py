@@ -33,7 +33,9 @@ def _checkpoint_path() -> Path:
             repo_id="Bencr/beats-checkpoints", repo_type="dataset",
             filename="BEATs_iter3_plus_AS2M.pt", revision=_CKPT.revision,
         )
-        Path(got).replace(_LOCAL) if Path(got).is_file() else None
+        # hf_hub_download may return a relative symlink into the HF cache —
+        # moving it would break its blobs/<sha> target; copy the bytes instead
+        _LOCAL.write_bytes(Path(got).read_bytes())
     sha = sha256_file(_LOCAL)
     if sha != _CKPT.sha256:
         raise RuntimeError(
