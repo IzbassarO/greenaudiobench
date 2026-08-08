@@ -1,0 +1,9 @@
+[project]
+name = "greenaudiobench"
+version = "0.1.0"
+description = "GreenAudioBench: accuracy-energy-latency benchmark of audio foundation models"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

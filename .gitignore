@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+*.egg-info/
+
+# Data: raw audio, archives and embeddings are never committed.
+# CHECKSUMS.txt IS committed (reproducibility hard rule #4).
+data/*
+!data/CHECKSUMS.txt
+
+# OS
+.DS_Store

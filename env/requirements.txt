@@ -1,0 +1,13 @@
+# GreenAudioBench — core dependencies (M0–M1).
+# Local dev env uses Python 3.13 (torch does not support 3.14 yet).
+# GPU/model dependencies (torch, transformers, laion_clap, msclap, fvcore,
+# pynvml, codecarbon) are added at M2/M5 when first used; the lock file is
+# regenerated at that point (`uv pip freeze > env/requirements-lock.txt`).
+numpy>=1.26
+pandas>=2.1
+scikit-learn>=1.4
+soundfile>=0.12
+requests>=2.31
+tqdm>=4.66
+matplotlib>=3.8
+pytest>=8.0
