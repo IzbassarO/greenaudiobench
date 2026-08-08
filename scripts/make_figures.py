@@ -30,8 +30,13 @@ RESULTS = ROOT / "results"
 FIGURES = ROOT / "figures"
 
 COL_W = 3.5          # IEEE single-column width in inches
-GRAY = "0.45"
-PARETO_MS = 7.0
+GRAY = "0.45"        # figures 3-5 only
+#: Scatter palette (fig1/fig2). Okabe-Ito blue for the accent; the dominated
+#: grey is dark enough to stay legible in print and in greyscale conversion.
+PARETO = "#0072B2"
+DOMINATED = "#4D4D4D"
+PARETO_MS = 8.0      # Pareto-optimal markers
+DOMINATED_MS = 7.0
 # distinct, grayscale-safe markers (shape carries the identity, not colour)
 MARKERS = {"ast": "o", "laion_clap": "s", "panns_cnn14": "^",
            "beats": "D", "ms_clap": "v"}
@@ -83,28 +88,23 @@ def scatter_pareto(ax, data: pd.DataFrame, cost_col: str, probe: pd.DataFrame,
 
     for row in data.itertuples():
         opt = row.optimal
+        colour = PARETO if opt else DOMINATED
         ax.plot(getattr(row, cost_col), row.accuracy_pct,
-                marker=MARKERS[row.model], markersize=PARETO_MS,
-                markerfacecolor="black" if opt else "white",
-                markeredgecolor="black" if opt else GRAY,
-                markeredgewidth=1.1 if opt else 0.9, linestyle="none",
+                marker=MARKERS[row.model],
+                markersize=PARETO_MS if opt else DOMINATED_MS,
+                markerfacecolor=colour if opt else "none",
+                markeredgecolor=colour,
+                markeredgewidth=1.2 if opt else 1.4, linestyle="none",
                 zorder=3 if opt else 2)
         dx, dy, ha = label_offsets.get(row.model, (1.06, 0.0, "left"))
         ax.annotate(DISPLAY[row.model],
                     (getattr(row, cost_col), row.accuracy_pct),
                     xytext=(getattr(row, cost_col) * dx, row.accuracy_pct + dy),
-                    fontsize=7, va="center", ha=ha,
-                    color="black" if opt else GRAY, zorder=4)
+                    fontsize=7, va="center", ha=ha, color=colour, zorder=4)
 
-    front = data[data["optimal"]].sort_values(cost_col)
-    if len(front) > 1:  # staircase frontier: only meaningful with >= 2 points
-        xs, ys = [], []
-        for i, r in enumerate(front.itertuples()):
-            if i:
-                xs.append(getattr(r, cost_col)); ys.append(ys[-1])
-            xs.append(getattr(r, cost_col)); ys.append(r.accuracy_pct)
-        ax.plot(xs, ys, color="black", linewidth=0.8, linestyle="--",
-                zorder=1, label="Pareto frontier")
+    ax.annotate("filled marker = Pareto-optimal", xy=(0.97, 0.04),
+                xycoords="axes fraction", fontsize=6.5, color=DOMINATED,
+                ha="right")
     ax.set_xscale("log")
     # explicit ticks: the default log minor labels collide at this width
     ax.set_xticks(xticks)
@@ -127,7 +127,6 @@ def figure1(probe, eff):
         xticks=[0.6, 0.8, 1.0, 2.0, 3.0, 5.0, 7.0])
     ax.set_ylim(91.0, 99.3)
     ax.set_xlim(0.55, 8.0)
-    ax.legend(loc="lower right", frameon=False)
     save(fig, "fig1_accuracy_vs_energy_fp32_bs1")
     return data
 
@@ -144,8 +143,6 @@ def figure2(probe, eff):
         xticks=[10, 15, 20, 30, 50, 80, 120])
     ax.set_ylim(91.0, 99.3)
     ax.set_xlim(9.5, 130.0)
-    ax.annotate("filled marker = Pareto-optimal", xy=(0.97, 0.04),
-                xycoords="axes fraction", fontsize=6.5, color=GRAY, ha="right")
     save(fig, "fig2_accuracy_vs_latency_fp32_bs1")
     return data
 
