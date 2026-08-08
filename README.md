@@ -35,8 +35,19 @@ Individual stages:
 
 ```bash
 .venv/bin/python scripts/download_data.py --datasets esc50 urbansound8k
-.venv/bin/python -m pytest           # unit tests (no audio needed)
+.venv/bin/python -m pytest           # unit tests (no audio/checkpoints needed)
+# GPU stages (official env: Colab T4 — notebooks/colab_runner.ipynb):
+.venv/bin/python scripts/extract_embeddings.py --dataset esc50   # M2
+.venv/bin/python scripts/run_probes.py --dataset esc50           # M3 (CPU ok)
+.venv/bin/python scripts/run_zeroshot.py --dataset esc50         # M4
+.venv/bin/python scripts/measure_efficiency.py                   # M5
+# every GPU script supports --smoke for a tiny CPU sanity run that can
+# never write into results/ (outputs go to data/smoke/)
 ```
+
+Model checkpoints are pinned (revision + SHA-256) in
+`src/gab/models/registry.py` and documented in `env/MODELS.md`; official runs
+refuse dirty working trees and unpinned checkpoints.
 
 ## Data
 
@@ -64,10 +75,12 @@ If you use these datasets, cite the original papers:
 - [x] **M0** — repo skeleton, env files, fold-parsing unit tests
 - [x] **M1** — ESC-50 + UrbanSound8K downloaded, checksums, loaders with
       official folds, dataset stats cross-checked against metadata
-- [ ] M2 — embedding extraction (ESC-50)
-- [ ] M3 — linear probes (ESC-50)
-- [ ] M4 — zero-shot CLAP (ESC-50)
-- [ ] M5 — efficiency measurements (Colab T4)
+- [x] **M2** — embedding extraction implemented (5 adapters, ESC-50);
+      official extraction runs on Colab T4
+- [x] **M3** — linear probe pipeline implemented (deterministic, fold-faithful)
+- [x] **M4** — zero-shot CLAP implemented
+- [x] **M5** — efficiency measurement implemented (NVML energy protocol);
+      official numbers T4-only, not yet run
 - [ ] M6 — UrbanSound8K (repeat M2–M5)
 - [ ] M7 — tables + Pareto figures
 - [ ] M8 — TAU 2020 Mobile (optional)

@@ -49,7 +49,8 @@ CHECKPOINTS: dict[str, Checkpoint] = {
         checkpoint="Cnn14_mAP=0.431.pth",
         source_url="https://zenodo.org/records/3987831",
         revision="zenodo-3987831 (md5 541141fa2ee191a88f24a3219fff024e)",
-        sha256="PENDING_LOCAL_VERIFY",  # computed from the downloaded file
+        # computed from the downloaded file, whose md5 matches Zenodo's record
+        sha256="0dc499e40e9761ef5ea061ffc77697697f277f6a960894903df3ada000e34b31",
         sample_rate=32000,
         adapter="gab.models.panns:PannsCnn14Adapter",
     ),

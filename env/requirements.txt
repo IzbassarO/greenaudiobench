@@ -1,8 +1,10 @@
-# GreenAudioBench — core dependencies (M0–M1).
-# Local dev env uses Python 3.13 (torch does not support 3.14 yet).
-# GPU/model dependencies (torch, transformers, laion_clap, msclap, fvcore,
-# pynvml, codecarbon) are added at M2/M5 when first used; the lock file is
-# regenerated at that point (`uv pip freeze > env/requirements-lock.txt`).
+# GreenAudioBench dependencies.
+# Local dev env: Python 3.13 (torch does not support 3.14 yet). Official GPU
+# env: Google Colab (Python 3.11/3.12, CUDA T4) — the Colab runner records its
+# own freeze to env/requirements-lock-colab.txt at run time; the committed
+# env/requirements-lock.txt reflects the local dev env.
+
+# core: data handling, folds, stats, probes, tests
 numpy>=1.26
 pandas>=2.1
 scikit-learn>=1.4
@@ -11,3 +13,16 @@ requests>=2.31
 tqdm>=4.66
 matplotlib>=3.8
 pytest>=8.0
+
+# models (M2+): frozen encoders + CLAP zero-shot
+torch>=2.4
+torchaudio>=2.4
+transformers>=4.44
+torchlibrosa>=0.1.0
+msclap>=1.3.3
+huggingface_hub>=0.23
+
+# efficiency (M5): GMACs, NVML power, optional CodeCarbon cross-check
+fvcore>=0.1.5
+pynvml>=11.5
+codecarbon>=2.4
