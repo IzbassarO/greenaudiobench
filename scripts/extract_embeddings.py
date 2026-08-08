@@ -25,7 +25,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from gab.audio import DECODE_ID, fix_duration, load_audio  # noqa: E402
 from gab.cache import cache_dir, is_cached, save_embeddings  # noqa: E402
-from gab.datasets import SPECS, audio_path, dataset_root, load_meta  # noqa: E402
+from gab.datasets import SPECS, audio_path, dataset_root, load_meta, smoke_subset  # noqa: E402
 from gab.models.registry import CHECKPOINTS, MODEL_ORDER, assert_pinned, load_adapter  # noqa: E402
 from gab.utils import assert_official_run, run_metadata  # noqa: E402
 
@@ -41,7 +41,10 @@ def extract_one_model(name: str, dataset: str, batch_size: int,
     smoke = smoke_n is not None
     meta = load_meta(spec, ROOT / "data")
     if smoke:
-        meta = meta.iloc[:smoke_n]
+        # fold-balanced subset, NOT the first N rows: ESC-50 metadata is sorted
+        # by filename (which starts with the fold id), so a head slice would
+        # contain fold 1 only and M3's official-fold probe could not run
+        meta = smoke_subset(meta, spec, smoke_n)
     root = dataset_root(spec, ROOT / "data")
 
     adapter = load_adapter(name)
@@ -96,7 +99,9 @@ def main() -> None:
                         choices=list(MODEL_ORDER))
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--smoke", type=int, default=None, metavar="N",
-                        help="CPU-friendly smoke run on first N clips; writes to data/smoke/")
+                        help="smoke run on a deterministic fold-balanced subset of "
+                             "at least N clips (covers every official fold); "
+                             "CPU allowed, writes only to data/smoke/")
     parser.add_argument("--allow-dirty", action="store_true",
                         help="debug override for the clean-tree provenance guard")
     args = parser.parse_args()

@@ -59,7 +59,10 @@ def main() -> None:
                 f"(run extract_embeddings.py first)")
             continue
         if args.smoke:
-            sub = meta_df.iloc[:len(filenames)]
+            # the smoke cache holds a fold-balanced subset (gab.datasets.
+            # smoke_subset), not a metadata prefix — align against exactly the
+            # official rows it names, still in official metadata order
+            sub = meta_df[meta_df[spec.filename_column].isin(filenames)]
         else:
             sub = meta_df
         verify_alignment(filenames, sub, spec)

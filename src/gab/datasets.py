@@ -78,6 +78,51 @@ def audio_path(spec: DatasetSpec, root: Path, row: pd.Series) -> Path:
     raise ValueError(f"unknown dataset {spec.key}")
 
 
+#: Smoke-harness subset shape. `--smoke N` runs are integration checks, not
+#: science: they must still exercise the REAL fold-aware probe protocol, so
+#: the subset has to contain every official fold (M3 iterates official folds)
+#: with >= 2 classes each — leaving one fold out then still leaves >= 2
+#: official training folds for the inner PredefinedSplit CV.
+SMOKE_CLIPS_PER_CLASS_PER_FOLD = 2
+SMOKE_MIN_CLASSES = 2
+
+
+def smoke_subset(meta: pd.DataFrame, spec: DatasetSpec, target_n: int) -> pd.DataFrame:
+    """Deterministic, fold-balanced tiny subset for --smoke runs.
+
+    Takes the first SMOKE_CLIPS_PER_CLASS_PER_FOLD clips (in official metadata
+    order) of each selected class inside EVERY official fold, selecting as many
+    classes as needed to reach `target_n` clips — so `--smoke N` is a MINIMUM
+    target size that expands to the smallest valid fold-balanced subset.
+
+    The returned rows keep official metadata order, real filenames, real labels
+    and real fold ids, so cache alignment behaves exactly as in a full run.
+    Never used by official runs.
+    """
+    import math
+
+    folds = sorted(meta["fold"].unique())
+    per = SMOKE_CLIPS_PER_CLASS_PER_FOLD
+    # only classes with enough clips in EVERY official fold keep the subset
+    # balanced across folds
+    counts = meta.groupby([spec.label_id_column, "fold"]).size().unstack(fill_value=0)
+    eligible = sorted(counts.index[(counts >= per).all(axis=1)].tolist())
+    if len(eligible) < SMOKE_MIN_CLASSES:
+        raise ValueError(
+            f"{spec.key}: only {len(eligible)} classes have >= {per} clips in every "
+            f"official fold — cannot build a valid fold-aware smoke subset"
+        )
+    n_classes = max(SMOKE_MIN_CLASSES, math.ceil(target_n / (len(folds) * per)))
+    chosen = eligible[:min(n_classes, len(eligible))]
+
+    keep: list = []
+    for fold in folds:
+        for label_id in chosen:
+            rows = meta[(meta["fold"] == fold) & (meta[spec.label_id_column] == label_id)]
+            keep.extend(rows.index[:per].tolist())
+    return meta.loc[sorted(keep)]
+
+
 def compute_stats(spec: DatasetSpec, data_dir: str | Path) -> dict:
     """Scan every clip referenced by the metadata; report counts/durations/rates.
 

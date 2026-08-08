@@ -39,7 +39,9 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from gab.audio import DECODE_ID, fix_duration, load_audio  # noqa: E402
 from gab.cache import load_embeddings, verify_alignment  # noqa: E402
-from gab.datasets import SPECS, DatasetSpec, audio_path, dataset_root, load_meta  # noqa: E402
+from gab.datasets import (  # noqa: E402
+    SPECS, DatasetSpec, audio_path, dataset_root, load_meta, smoke_subset,
+)
 from gab.models.registry import CHECKPOINTS, assert_pinned, load_adapter  # noqa: E402
 from gab.utils import assert_official_run, run_metadata, smoke_output_dir  # noqa: E402
 
@@ -172,12 +174,12 @@ def cached_audio_embeddings(
         log(f"{name}/{spec.key}: cache decode_id is stale — computing fresh")
         return None
     n = len(meta_df)
-    if len(filenames) < n or (not smoke and len(filenames) != n):
+    if len(filenames) != n:
         log(f"{name}/{spec.key}: cache has {len(filenames)} rows, need {n} — "
             "computing fresh")
         return None
-    verify_alignment(filenames[:n], meta_df, spec)
-    return X[:n], np.asarray(fold_ids[:n]), np.asarray(label_ids[:n])
+    verify_alignment(filenames, meta_df, spec)
+    return X, np.asarray(fold_ids), np.asarray(label_ids)
 
 
 def fresh_audio_embeddings(
@@ -255,8 +257,10 @@ def main(argv: list[str] | None = None) -> None:
                         choices=list(ZEROSHOT_MODELS))
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--smoke", type=int, default=None, metavar="N",
-                        help="CPU-friendly smoke run on first N clips; "
-                             "writes ONLY data/smoke/zeroshot_smoke.csv")
+                        help="smoke run on a deterministic fold-balanced subset "
+                             "of at least N clips (same subset as "
+                             "extract_embeddings.py --smoke N); writes ONLY "
+                             "data/smoke/zeroshot_smoke.csv")
     parser.add_argument("--allow-dirty", action="store_true",
                         help="debug override for the clean-tree provenance guard")
     args = parser.parse_args(argv)
@@ -285,7 +289,9 @@ def main(argv: list[str] | None = None) -> None:
         raise RuntimeError(
             f"{spec.key}: {len(class_names)} classes != official "
             f"{spec.expected_classes}")
-    meta_df = full_meta.iloc[:args.smoke] if smoke else full_meta
+    # smoke uses the SAME fold-balanced subset as extract_embeddings.py, so the
+    # P2 smoke caches stay reusable here (never a metadata prefix)
+    meta_df = smoke_subset(full_meta, spec, args.smoke) if smoke else full_meta
     data_root = dataset_root(spec, ROOT / "data")
 
     frames = []

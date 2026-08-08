@@ -52,15 +52,20 @@ def tiny_esc50(tmp_path, monkeypatch):
     (root / "meta").mkdir()
     rows = []
     rng = np.random.default_rng(0)
+    # 3 classes x 2 clips inside each official fold, sorted by filename like the
+    # real ESC-50 CSV — enough structure for the fold-aware smoke subset
     for fold in range(1, 6):
-        target = fold % 2
-        name = f"{fold}-{100000 + fold}-A-{target}.wav"
-        sf.write(str(root / "audio" / name),
-                 (0.1 * rng.standard_normal(8000)).astype(np.float32), 8000)
-        rows.append({"filename": name, "fold": fold, "target": target,
-                     "category": ["dog", "rain"][target], "esc10": True,
-                     "src_file": 100000 + fold, "take": "A"})
-    pd.DataFrame(rows).to_csv(root / "meta" / "esc50.csv", index=False)
+        for target in range(3):
+            for k in range(2):
+                src = 100000 + fold * 100 + target * 10 + k
+                name = f"{fold}-{src}-A-{target}.wav"
+                sf.write(str(root / "audio" / name),
+                         (0.1 * rng.standard_normal(8000)).astype(np.float32), 8000)
+                rows.append({"filename": name, "fold": fold, "target": target,
+                             "category": ["dog", "rain", "siren"][target],
+                             "esc10": True, "src_file": src, "take": "A"})
+    (pd.DataFrame(rows).sort_values("filename")
+     .to_csv(root / "meta" / "esc50.csv", index=False))
     monkeypatch.setattr(extract, "ROOT", tmp_path)
     monkeypatch.setattr(cache_mod, "REPO_ROOT", tmp_path)
     monkeypatch.setitem(extract.CHECKPOINTS, "fake", None)
@@ -75,12 +80,12 @@ def tiny_esc50(tmp_path, monkeypatch):
 def test_extraction_alignment_and_cache(tiny_esc50, capsys):
     extract.extract_one_model("fake", "esc50", batch_size=2, device="cpu", smoke_n=None)
     X, filenames, fold_ids, label_ids, meta = load_embeddings("fake", "esc50")
-    assert X.shape == (5, 4) and np.isfinite(X).all()
-    assert list(fold_ids) == [1, 2, 3, 4, 5]          # official folds preserved
-    assert list(label_ids) == [1, 0, 1, 0, 1]         # target column, meta order
     meta_df = pd.read_csv(
         tiny_esc50 / "data/raw/esc50/ESC-50-master/meta/esc50.csv")
-    verify_alignment(filenames, meta_df, ESC50)       # row order == CSV order
+    assert X.shape == (30, 4) and np.isfinite(X).all()
+    assert list(fold_ids) == meta_df["fold"].tolist()      # official folds preserved
+    assert list(label_ids) == meta_df["target"].tolist()   # target column, meta order
+    verify_alignment(filenames, meta_df, ESC50)            # row order == CSV order
     assert meta["revision"] == "r-test"
     assert X[0, 2] == 40000                            # 5 s @ 8 kHz after fix_duration
 
@@ -106,5 +111,8 @@ def test_smoke_writes_only_under_smoke_dir(tiny_esc50):
     extract.extract_one_model("fake", "esc50", batch_size=2, device="cpu", smoke_n=3)
     assert (tiny_esc50 / "data/smoke/embeddings/fake/esc50/embeddings.npz").exists()
     assert not (tiny_esc50 / "data/embeddings/fake/esc50/embeddings.npz").exists()
-    X, filenames, *_ = load_embeddings("fake", "esc50", smoke=True)
-    assert X.shape == (3, 4)
+    X, filenames, fold_ids, *_ = load_embeddings("fake", "esc50", smoke=True)
+    # fold-balanced subset of the fixture: every official fold, 2 classes each
+    assert X.shape == (20, 4)
+    assert sorted(set(fold_ids)) == [1, 2, 3, 4, 5]
+    assert len(filenames) == 20
