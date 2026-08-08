@@ -1,11 +1,60 @@
 """M5 accounting (C5): clip divisor, idle subtraction, latency stats — no GPU."""
 
+import sys
+import threading
+import time
+import types
+
 import numpy as np
 import pytest
 
 from gab.efficiency import (
-    PowerTrace, energy_metrics, latency_stats, run_measured_window,
+    NvmlPowerSampler, PowerTrace, energy_metrics, latency_stats,
+    run_measured_window,
 )
+
+
+def fake_pynvml(watts=70.0):
+    """Minimal stand-in for the NVML bindings so the sampler runs on CPU."""
+    mod = types.ModuleType("pynvml")
+    mod.nvmlInit = lambda: None
+    mod.nvmlShutdown = lambda: None
+    mod.nvmlDeviceGetHandleByIndex = lambda idx: object()
+    mod.nvmlDeviceGetPowerUsage = lambda handle: int(watts * 1000)  # milliwatts
+    return mod
+
+
+def test_power_sampler_lifecycle_start_stop_join(monkeypatch):
+    """start() -> sample -> stop() must join cleanly.
+
+    Regression: naming the stop flag `self._stop` shadowed threading.Thread's
+    private _stop() method, which join() calls on Python <= 3.12 (Colab), so
+    official M5 died with "TypeError: 'Event' object is not callable" before
+    the idle baseline was measured.
+    """
+    monkeypatch.setitem(sys.modules, "pynvml", fake_pynvml(watts=70.0))
+    sampler = NvmlPowerSampler(hz=50.0)
+    sampler.start()
+    deadline = time.monotonic() + 5.0
+    while len(sampler.trace.watts) < 3 and time.monotonic() < deadline:
+        time.sleep(0.01)
+    trace = sampler.stop()  # must not raise TypeError
+    assert not sampler.is_alive()
+    assert len(trace.watts) >= 3 and all(w == pytest.approx(70.0) for w in trace.watts)
+    assert trace.energy_j() > 0
+    assert sampler.stop() is trace  # idempotent for the existing call sites
+
+
+def test_power_sampler_does_not_shadow_thread_internals(monkeypatch):
+    """No instance attribute may collide with a threading.Thread member."""
+    monkeypatch.setitem(sys.modules, "pynvml", fake_pynvml())
+    sampler = NvmlPowerSampler()
+    own_attrs = set(vars(sampler)) - set(vars(threading.Thread()))
+    assert own_attrs  # sanity: the sampler does add its own state
+    # `_stop` is listed explicitly: Python 3.13 removed it from Thread, so
+    # dir() alone would not catch the exact bug on newer interpreters.
+    reserved = set(dir(threading.Thread)) | {"_stop", "_wait_for_tstate_lock"}
+    assert not (own_attrs & reserved)
 
 
 def test_energy_integral_trapezoid():

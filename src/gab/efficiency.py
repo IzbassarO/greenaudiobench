@@ -75,7 +75,10 @@ class NvmlPowerSampler(threading.Thread):
         super().__init__(daemon=True)
         self.hz = hz
         self.trace = PowerTrace([], [])
-        self._stop = threading.Event()
+        # NOT self._stop: threading.Thread defines a private _stop() method on
+        # Python <= 3.12 (Colab), which join() calls internally — shadowing it
+        # with an Event raises "TypeError: 'Event' object is not callable"
+        self._stop_event = threading.Event()
 
     def run(self) -> None:
         import pynvml
@@ -83,14 +86,14 @@ class NvmlPowerSampler(threading.Thread):
         pynvml.nvmlInit()
         handle = pynvml.nvmlDeviceGetHandleByIndex(0)
         period = 1.0 / self.hz
-        while not self._stop.is_set():
+        while not self._stop_event.is_set():
             self.trace.times_s.append(time.monotonic())
             self.trace.watts.append(pynvml.nvmlDeviceGetPowerUsage(handle) / 1000.0)
-            self._stop.wait(period)
+            self._stop_event.wait(period)
         pynvml.nvmlShutdown()
 
     def stop(self) -> PowerTrace:
-        self._stop.set()
+        self._stop_event.set()
         self.join()
         return self.trace
 
