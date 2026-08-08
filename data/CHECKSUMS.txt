@@ -1,0 +1,9 @@
+# GreenAudioBench dataset archive checksums.
+# SHA-256 recorded from the ACTUAL downloaded files (never copied).
+# Verify with: cd data && shasum -a 256 -c CHECKSUMS.txt
+
+# file: archives/UrbanSound8K.tar.gz  size_bytes=6023741708  downloaded_utc=2026-08-08T13:44:55Z
+bac1d1b642484a411d26802dd515102ca9111de689ee8ad4fc5c3b07cb2c2293  archives/UrbanSound8K.tar.gz
+
+# file: archives/esc50-master.zip  size_bytes=645695005  downloaded_utc=2026-08-08T13:44:51Z
+805afc618aff80eff0641d51311647871fead5807da68bb18e43a27db47a79ce  archives/esc50-master.zip
