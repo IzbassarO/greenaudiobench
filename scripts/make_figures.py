@@ -4,8 +4,10 @@
 Inputs:  results/accuracy.csv, results/zeroshot.csv, results/efficiency.csv
 Outputs: figures/*.pdf (vector, for the paper) and figures/*.png (300 dpi)
 
-Styling targets IEEE two-column width (~3.5 in). No seaborn, no random state,
-no fabricated values: failed fp16 configurations are annotated, never plotted.
+Styling is centralised in scripts/fig_style.py (Okabe-Ito palette, fixed
+model->color mapping, Type-42 fonts, IEEE column width). No seaborn, no random
+state, no fabricated values: failed fp16 configurations are annotated, never
+plotted.
 """
 
 from __future__ import annotations
@@ -22,41 +24,20 @@ import matplotlib.pyplot as plt  # noqa: E402
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
+from fig_style import (  # noqa: E402
+    BAR_EDGE, BAR_H, COL_W, INK, MARKERS, MODEL_COLORS, NOTE_GRAY, PAIR_COLORS,
+    SCATTER_H, TEXT_W, apply_rcparams, save, style_bar_axes, style_scatter_axes,
+)
 from summarize_results import (  # noqa: E402
     DISPLAY, MODEL_ORDER, pareto_front, probe_summary,
 )
 
 RESULTS = ROOT / "results"
-FIGURES = ROOT / "figures"
 
-COL_W = 3.5          # IEEE single-column width in inches
-GRAY = "0.45"        # figures 3-5 only
-#: Scatter palette (fig1/fig2). Okabe-Ito blue for the accent; the dominated
-#: grey is dark enough to stay legible in print and in greyscale conversion.
-PARETO = "#0072B2"
-DOMINATED = "#4D4D4D"
 PARETO_MS = 8.0      # Pareto-optimal markers
 DOMINATED_MS = 7.0
-# distinct, grayscale-safe markers (shape carries the identity, not colour)
-MARKERS = {"ast": "o", "laion_clap": "s", "panns_cnn14": "^",
-           "beats": "D", "ms_clap": "v"}
 
-plt.rcParams.update({
-    "font.size": 8, "axes.labelsize": 8, "axes.titlesize": 8,
-    "xtick.labelsize": 7, "ytick.labelsize": 7, "legend.fontsize": 7,
-    "figure.dpi": 300, "savefig.dpi": 300, "savefig.bbox": "tight",
-    "savefig.pad_inches": 0.02, "axes.grid": True, "grid.alpha": 0.3,
-    "grid.linewidth": 0.4, "axes.axisbelow": True, "lines.linewidth": 1.0,
-    "pdf.fonttype": 42, "ps.fonttype": 42,
-})
-
-
-def save(fig, stem: str) -> None:
-    FIGURES.mkdir(exist_ok=True)
-    for ext in ("pdf", "png"):
-        fig.savefig(FIGURES / f"{stem}.{ext}")
-    plt.close(fig)
-    print(f"[figures] wrote figures/{stem}.pdf and .png")
+apply_rcparams()
 
 
 def load():
@@ -79,6 +60,9 @@ def scatter_pareto(ax, data: pd.DataFrame, cost_col: str, probe: pd.DataFrame,
                    xticks: list[float]):
     """Accuracy (%) vs a cost metric, Pareto-optimal points marked.
 
+    One Okabe-Ito color per model; filled marker = Pareto-optimal,
+    hollow (white face, colored edge) = dominated.
+
     label_offsets: model -> (x multiplier, y offset in accuracy points,
     horizontal alignment) so every label sits beside its own marker.
     """
@@ -88,23 +72,24 @@ def scatter_pareto(ax, data: pd.DataFrame, cost_col: str, probe: pd.DataFrame,
 
     for row in data.itertuples():
         opt = row.optimal
-        colour = PARETO if opt else DOMINATED
+        colour = MODEL_COLORS[row.model]
         ax.plot(getattr(row, cost_col), row.accuracy_pct,
                 marker=MARKERS[row.model],
                 markersize=PARETO_MS if opt else DOMINATED_MS,
-                markerfacecolor=colour if opt else "none",
+                markerfacecolor=colour if opt else "white",
                 markeredgecolor=colour,
-                markeredgewidth=1.2 if opt else 1.4, linestyle="none",
+                markeredgewidth=1.2, linestyle="none",
                 zorder=3 if opt else 2)
         dx, dy, ha = label_offsets.get(row.model, (1.06, 0.0, "left"))
         ax.annotate(DISPLAY[row.model],
                     (getattr(row, cost_col), row.accuracy_pct),
                     xytext=(getattr(row, cost_col) * dx, row.accuracy_pct + dy),
-                    fontsize=7, va="center", ha=ha, color=colour, zorder=4)
+                    fontsize=7, va="center", ha=ha, color=INK, zorder=4)
 
     ax.annotate("filled marker = Pareto-optimal", xy=(0.97, 0.04),
-                xycoords="axes fraction", fontsize=6.5, color=DOMINATED,
+                xycoords="axes fraction", fontsize=6.5, color=NOTE_GRAY,
                 ha="right")
+    style_scatter_axes(ax)
     ax.set_xscale("log")
     # explicit ticks: the default log minor labels collide at this width
     ax.set_xticks(xticks)
@@ -117,7 +102,7 @@ def scatter_pareto(ax, data: pd.DataFrame, cost_col: str, probe: pd.DataFrame,
 
 def figure1(probe, eff):
     """Accuracy vs dynamic (idle-subtracted) energy, fp32, batch 1."""
-    fig, ax = plt.subplots(figsize=(COL_W, 2.7))
+    fig, ax = plt.subplots(figsize=(COL_W, SCATTER_H))
     data = scatter_pareto(
         ax, fp32(eff, 1), "j_per_clip_dynamic", probe,
         "Dynamic energy per clip (J, log scale)\nNVML board power, idle baseline subtracted",
@@ -133,7 +118,7 @@ def figure1(probe, eff):
 
 def figure2(probe, eff):
     """Accuracy vs median latency, fp32, batch 1."""
-    fig, ax = plt.subplots(figsize=(COL_W, 2.7))
+    fig, ax = plt.subplots(figsize=(COL_W, SCATTER_H))
     data = scatter_pareto(
         ax, fp32(eff, 1), "latency_ms_per_clip_median", probe,
         "Median latency per clip (ms, log scale)\nwaveform to embedding, batch size 1",
@@ -147,40 +132,62 @@ def figure2(probe, eff):
     return data
 
 
-def figure3(eff):
-    """Batch-size effect on per-clip latency and dynamic energy, fp32."""
-    b1, b32 = fp32(eff, 1), fp32(eff, 32)
-    merged = b1.merge(b32, on="model", suffixes=("_b1", "_b32"))
+BATCH_NOTE = "annotation = batch-1 / batch-32 ratio (>1 favours batching)"
+
+
+def _batch_panel(ax, merged: pd.DataFrame, metric: str, ylabel: str) -> None:
+    """One grouped-bar panel of the batch-size comparison (batch 1 vs 32)."""
     x = range(len(merged))
     width = 0.38
+    v1 = merged[f"{metric}_b1"].to_numpy()
+    v32 = merged[f"{metric}_b32"].to_numpy()
+    ax.bar([i - width / 2 for i in x], v1, width, label="batch 1",
+           color=PAIR_COLORS[0], edgecolor=BAR_EDGE, linewidth=0.5)
+    ax.bar([i + width / 2 for i in x], v32, width, label="batch 32",
+           color=PAIR_COLORS[1], edgecolor=BAR_EDGE, linewidth=0.5)
+    for i, (a, b) in enumerate(zip(v1, v32)):
+        ax.annotate(f"{a / b:.2f}x", (i, max(a, b)), textcoords="offset points",
+                    xytext=(0, 2.5), ha="center", fontsize=6.5, color=INK)
+    ax.set_xticks(list(x))
+    ax.set_xticklabels([DISPLAY[m] for m in merged["model"]], rotation=20,
+                       ha="right")
+    ax.set_ylabel(ylabel)
+    ax.set_ylim(0, max(v1.max(), v32.max()) * 1.18)
+    style_bar_axes(ax)
 
-    fig, axes = plt.subplots(1, 2, figsize=(7.16, 2.6))
-    panels = [
-        (axes[0], "latency_ms_per_clip_median", "Median latency per clip (ms)"),
-        (axes[1], "j_per_clip_dynamic", "Dynamic energy per clip (J)"),
-    ]
-    for ax, metric, ylabel in panels:
-        v1 = merged[f"{metric}_b1"].to_numpy()
-        v32 = merged[f"{metric}_b32"].to_numpy()
-        ax.bar([i - width / 2 for i in x], v1, width, label="batch 1",
-               color="0.75", edgecolor="black", linewidth=0.6)
-        ax.bar([i + width / 2 for i in x], v32, width, label="batch 32",
-               color="0.35", edgecolor="black", linewidth=0.6, hatch="///")
-        for i, (a, b) in enumerate(zip(v1, v32)):
-            ax.annotate(f"{a / b:.2f}x", (i, max(a, b)), textcoords="offset points",
-                        xytext=(0, 2.5), ha="center", fontsize=6.5)
-        ax.set_xticks(list(x))
-        ax.set_xticklabels([DISPLAY[m] for m in merged["model"]], rotation=20,
-                           ha="right")
-        ax.set_ylabel(ylabel)
-        ax.set_ylim(0, max(v1.max(), v32.max()) * 1.18)
+
+def figure3(eff):
+    """Batch-size effect on per-clip latency and dynamic energy, fp32.
+
+    Two-panel version kept for the repo; the paper uses the native
+    single-panel figure produced by figure3_single().
+    """
+    b1, b32 = fp32(eff, 1), fp32(eff, 32)
+    merged = b1.merge(b32, on="model", suffixes=("_b1", "_b32"))
+
+    fig, axes = plt.subplots(1, 2, figsize=(TEXT_W, 2.6))
+    _batch_panel(axes[0], merged, "latency_ms_per_clip_median",
+                 "Median latency per clip (ms)")
+    _batch_panel(axes[1], merged, "j_per_clip_dynamic",
+                 "Dynamic energy per clip (J)")
     axes[0].legend(loc="upper right", frameon=False)
-    axes[0].annotate("annotation = batch-1 / batch-32 ratio (>1 favours batching)",
-                     xy=(0.0, 1.02), xycoords="axes fraction", fontsize=6.5,
-                     color=GRAY)
+    axes[0].annotate(BATCH_NOTE, xy=(0.0, 1.02), xycoords="axes fraction",
+                     fontsize=6.5, color=NOTE_GRAY)
     fig.tight_layout()
     save(fig, "fig3_batch_effect_fp32")
     return merged
+
+
+def figure3_single(merged: pd.DataFrame):
+    """Native single-panel latency version of fig3, used in the paper
+    (replaces the temporary crop of the two-panel figure)."""
+    fig, ax = plt.subplots(figsize=(COL_W, BAR_H))
+    _batch_panel(ax, merged, "latency_ms_per_clip_median",
+                 "Median latency per clip (ms)")
+    ax.legend(loc="upper right", frameon=False)
+    ax.annotate(BATCH_NOTE, xy=(0.0, 1.02), xycoords="axes fraction",
+                fontsize=6.5, color=NOTE_GRAY)
+    save(fig, "fig3_batch_latency")
 
 
 def figure4(zs):
@@ -194,9 +201,7 @@ def figure4(zs):
                      for t in templates}
     width = 0.35
 
-    fig, ax = plt.subplots(figsize=(COL_W, 2.7))
-    styles = {"primary": dict(color="0.75", hatch=""),
-              "alternative": dict(color="0.35", hatch="///")}
+    fig, ax = plt.subplots(figsize=(COL_W, BAR_H))
     for k, t in enumerate(templates):
         vals, errs = [], []
         for m in models:
@@ -204,30 +209,36 @@ def figure4(zs):
             vals.append(100 * r["mean"])
             errs.append(100 * r["std"])
         pos = [i + (k - 0.5) * width for i in range(len(models))]
-        ax.bar(pos, vals, width, yerr=errs, capsize=2.5, edgecolor="black",
-               linewidth=0.6, label=f'{t}: "{template_text[t]}"',
-               error_kw=dict(elinewidth=0.7, capthick=0.7), **styles[t])
+        ax.bar(pos, vals, width, yerr=errs, capsize=2, edgecolor=BAR_EDGE,
+               linewidth=0.5, color=PAIR_COLORS[k],
+               label=f'{t}: "{template_text[t]}"',
+               error_kw=dict(elinewidth=0.8, capthick=0.8, ecolor=INK))
         for p, v, e in zip(pos, vals, errs):
             ax.annotate(f"{v:.2f}", (p, v + e), textcoords="offset points",
-                        xytext=(0, 2.5), ha="center", fontsize=6.5)
+                        xytext=(0, 2.5), ha="center", fontsize=6.5, color=INK)
     ax.set_xticks(range(len(models)))
     ax.set_xticklabels([DISPLAY[m] for m in models])
     ax.set_ylabel("Zero-shot accuracy (%)")
     ax.set_ylim(70, 100)
+    style_bar_axes(ax)
     # legend outside the plotting area: at this width it would otherwise sit
     # on top of the LAION-CLAP bars
     ax.legend(loc="lower center", bbox_to_anchor=(0.5, 1.01), frameon=False,
               fontsize=6.3, ncol=1, handlelength=1.6, borderpad=0.2,
               labelspacing=0.3)
     ax.set_xlabel("error bars: std across the 5 official folds; weak zero-shot "
-                  "(possible pretraining overlap)", fontsize=6, color=GRAY,
+                  "(possible pretraining overlap)", fontsize=6, color=NOTE_GRAY,
                   labelpad=6)
     save(fig, "fig4_zeroshot_prompt_sensitivity")
     return g
 
 
 def figure5(eff):
-    """fp32 vs fp16 where fp16 actually produced valid measurements."""
+    """fp32 vs fp16 where fp16 actually produced valid measurements.
+
+    NOTE: this figure is NOT included in the SIDe'26 submission — Table III
+    carries the precision-ablation data. Kept restyled for repo consistency.
+    """
     ok16 = eff[(eff["dtype"] == "fp16") & (eff["status"] == "ok")]["model"].unique()
     failed = sorted({DISPLAY[m] for m in
                      eff[(eff["dtype"] == "fp16") & (eff["status"] != "ok")]["model"]})
@@ -245,31 +256,32 @@ def figure5(eff):
 
     x = range(len(labels))
     width = 0.38
-    fig, axes = plt.subplots(1, 2, figsize=(7.16, 2.7))
+    fig, axes = plt.subplots(1, 2, figsize=(TEXT_W, 2.7))
     for ax, v32, v16, ylabel in (
         (axes[0], lat32, lat16, "Median latency per clip (ms)"),
         (axes[1], e32, e16, "Dynamic energy per clip (J)"),
     ):
         ax.bar([i - width / 2 for i in x], v32, width, label="fp32",
-               color="0.75", edgecolor="black", linewidth=0.6)
+               color=PAIR_COLORS[0], edgecolor=BAR_EDGE, linewidth=0.5)
         ax.bar([i + width / 2 for i in x], v16, width, label="fp16",
-               color="0.35", edgecolor="black", linewidth=0.6, hatch="///")
+               color=PAIR_COLORS[1], edgecolor=BAR_EDGE, linewidth=0.5)
         for i, (a, b) in enumerate(zip(v32, v16)):
             # signed change of fp16 relative to fp32: negative = fp16 cheaper
             ax.annotate(f"{100 * (b - a) / a:+.0f}%", (i, max(a, b)),
                         textcoords="offset points", xytext=(0, 2.5), ha="center",
-                        fontsize=6.5)
+                        fontsize=6.5, color=INK)
         ax.set_xticks(list(x))
         ax.set_xticklabels(labels, fontsize=6.5)
         ax.set_ylabel(ylabel)
         ax.set_ylim(0, max(max(v32), max(v16)) * 1.20)
+        style_bar_axes(ax)
     axes[0].legend(loc="upper right", frameon=False)
     axes[0].annotate("annotation = fp16 change vs fp32 (negative = cheaper)",
                      xy=(0.0, 1.03), xycoords="axes fraction", fontsize=6.3,
-                     color=GRAY)
+                     color=NOTE_GRAY)
     axes[1].annotate(
         "fp16 unmeasurable (NaN/Inf in embeddings): " + ", ".join(failed),
-        xy=(0.0, 1.03), xycoords="axes fraction", fontsize=6.3, color=GRAY)
+        xy=(0.0, 1.03), xycoords="axes fraction", fontsize=6.3, color=NOTE_GRAY)
     fig.tight_layout()
     save(fig, "fig5_precision_effect")
     return valid, failed
@@ -279,7 +291,8 @@ def main() -> None:
     probe, zs, eff = load()
     figure1(probe, eff)
     figure2(probe, eff)
-    figure3(eff)
+    merged = figure3(eff)
+    figure3_single(merged)
     figure4(zs)
     figure5(eff)
     print("[figures] done")
